@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>上班路線</title>
+  <meta name="description" content="石碇服務區到國票金控的三條路線，依即時路況選最快">
+  <meta name="theme-color" content="#0c0e10">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="上班路線">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main>
+    <header class="top">
+      <h1>上班路線</h1>
+      <p>石碇服務區 → 國票金控</p>
+    </header>
+    <p id="demoBanner" class="demo" hidden>示範資料（虛構的國五塞車情境），不是真實路況</p>
+    <p id="intro" class="intro">按下分析，比較三條路線現在的預估時間。</p>
+    <section id="verdict" class="verdict" aria-live="polite" hidden></section>
+    <section id="routes" class="routes"></section>
+    <div id="legend" class="legend" hidden>
+      <span><i class="dot lv-good"></i>順暢</span>
+      <span><i class="dot lv-slow"></i>車多</span>
+      <span><i class="dot lv-jam"></i>壅塞</span>
+      <span><i class="dot lv-est"></i>無即時資料，估算</span>
+    </div>
+    <section id="status" class="status" aria-live="polite"></section>
+    <footer class="credit">資料來源：交通部高速公路局、臺北市交通管制工程處。預估時間僅供參考。</footer>
+  </main>
+
+  <div class="action-bar">
+    <button id="analyze" type="button">分析</button>
+  </div>
+
+  <dialog id="camDialog" class="cam-dialog" aria-labelledby="camTitle">
+    <div class="cam-head">
+      <strong id="camTitle"></strong>
+      <button id="camClose" type="button">關閉</button>
+    </div>
+    <div class="cam-frame">
+      <img id="camImage" alt="監視器即時影像">
+      <p id="camError" hidden>這支監視器目前連不上，請換下一支。</p>
+    </div>
+    <div class="cam-nav">
+      <button id="camPrev" type="button">上一支</button>
+      <span id="camCount"></span>
+      <button id="camNext" type="button">下一支</button>
+    </div>
+  </dialog>
+
+  <script src="config.js"></script>
+  <script src="routes.js"></script>
+  <script src="demo.js"></script>
+  <script>
+    if (new URLSearchParams(location.search).has('dev')) document.write('<script src="tools/dev-backend.js"><\/script>');
+  </script>
+  <script src="app.js"></script>
+</body>
+</html>
