@@ -122,7 +122,3 @@ a { color: inherit; }
   .verdict h2 { font-size: 25px; }
 }
 
-@media (prefers-reduced-motion: no-preference) {
-  .verdict { animation: rise .22s ease-out; }
-  @keyframes rise { from { opacity: 0; transform: translateY(6px); } }
-}
