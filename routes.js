@@ -24,7 +24,8 @@ const TO_LINK_ROAD = [
   { name: '南港聯絡道', km: 1.4, src: 'vd', id: 'VD-N3N-N-0.700-M-LOOP', free: 60, est: [55, 35] },
 ];
 const RING_FRONT = { name: '環東 聯絡道→南港', group: '環東大道', km: 0.33, src: 'tpe', id: 'Z6310G0', free: 70, est: [70, 45] };
-const RING_MAIN = { name: '環東 彩虹橋段', group: '環東大道', km: 3.25, src: 'tpe', id: 'Z6330G0', free: 70, est: [70, 45] };
+// 臺北市資料有時只提供 Z6330G5（名稱寫出城，但座標是進城方向的同一段）
+const RING_MAIN = { name: '環東 彩虹橋段', group: '環東大道', km: 3.25, src: 'tpe', id: 'Z6330G0', altId: 'Z6330G5', free: 70, est: [70, 45] };
 const TAIL = [
   { name: '環東下堤頂匝道', group: '堤頂大道→國票金控', km: 0.9, src: 'est', free: 35, est: [35, 25], delay: 30 },
   { name: '堤頂大道 舊宗路→港墘路', group: '堤頂大道→國票金控', km: 1.4, src: 'tpe', id: 'ZRPSV00', free: 50, est: [45, 30], delay: 60 },
@@ -106,9 +107,8 @@ function staleFeeds(data, now) {
 
 function liveReading(seg, data, stale) {
   if (seg.src === 'est' || stale.includes(seg.src)) return null;
-  const r = (data[seg.src] || {})[seg.id];
-  if (!r || !(r.speed > 0)) return null;
-  return r;
+  const feed = data[seg.src] || {};
+  return [seg.id, seg.altId].map((id) => feed[id]).find((r) => r && r.speed > 0) || null;
 }
 
 function evaluateSegment(seg, data, peak, stale) {
@@ -220,7 +220,11 @@ function analyze(data, now) {
 
 function apiQuery() {
   const ids = { nfb: new Set(), vd: new Set(), tpe: new Set() };
-  ROUTES.forEach((r) => r.segments.forEach((s) => { if (ids[s.src]) ids[s.src].add(s.id); }));
+  ROUTES.forEach((r) => r.segments.forEach((s) => {
+    if (!ids[s.src]) return;
+    ids[s.src].add(s.id);
+    if (s.altId) ids[s.src].add(s.altId);
+  }));
   return Object.keys(ids).map((k) => `${k}=${encodeURIComponent([...ids[k]].join(','))}`).join('&');
 }
 

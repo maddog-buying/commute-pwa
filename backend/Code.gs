@@ -1,56 +1,158 @@
-// 上班路線分析的資料中繼：高公局與臺北市的開放資料沒有 CORS，網頁無法直接讀取，
-// 由這支 Apps Script 代抓後只回傳前端要的路段。部署：網頁應用程式、存取權「所有人」。
-// 查詢參數：nfb=路段ID,... vd=VDID,... tpe=路段ID,...（逗號分隔）
+// 上班路線分析的資料中繼：開放資料不允許網頁跨網域讀取，由這支 Apps Script 代抓。
+// 部署：網頁應用程式、存取權「所有人」。
+// 國道資料走 TDX，因為 Google 的主機連不上高公局的 tisvcloud。
+// 金鑰放在「專案設定 → 指令碼屬性」：TDX_CLIENT_ID、TDX_CLIENT_SECRET，不要寫進程式碼。
+// 路段固定寫在這裡、回應整份快取，所以公開網址不會被人用來消耗金鑰額度。
 
-const FEEDS = {
-  nfb: 'https://tisvcloud.freeway.gov.tw/history/motc20/LiveTraffic.xml',
-  vd: 'https://tisvcloud.freeway.gov.tw/history/motc20/VDLive.xml',
-  events: 'https://tisvcloud.freeway.gov.tw/history/motc20/LiveEvents.xml',
-  tpe: 'https://tcgbusfs.blob.core.windows.net/blobtisv/GetVD.xml.gz', // 未壓縮的 GetVD.xml 停在 2024 年，不能用
-};
+const TDX_API = 'https://tdx.transportdata.tw/api/basic/v2/Road/Traffic/';
+const TDX_TOKEN = 'https://tdx.transportdata.tw/auth/realms/TDXConnect/protocol/openid-connect/token';
+const TAIPEI_VD = 'https://tcgbusfs.blob.core.windows.net/blobtisv/GetVD.xml.gz'; // 未壓縮的 GetVD.xml 停在 2024 年，不能用
+
+const NFB_IDS = ['0366', '0190', '0194', '0192'];
+const VD_IDS = ['VD-N3-N-16-I-EN-南港系統-5N3N', 'VD-N3N-N-0.700-M-LOOP'];
+const TPE_IDS = ['Z6310G0', 'Z6330G0', 'Z6330G5', 'ZRPSV00', 'ZSGRX60', 'ZSPRA60', 'ZT5QV00', 'ZHX4E40', 'ZKP4L00'];
 const EVENT_ROADS = ['國道五號', '國道三號', '南港聯絡道'];
+const EVENT_PATHS = ['Live/Event/Freeway', 'Live/News/Freeway', 'News/Freeway']; // TDX 文件要有金鑰才能驗證，依序嘗試
+
 const CACHE_SECONDS = 55; // 來源每分鐘更新
+const TOKEN_CACHE_SECONDS = 21600; // CacheService 上限 6 小時，token 本身效期一天
+const DIAG_CACHE_SECONDS = 300;
 
 function doGet(e) {
-  const params = (e && e.parameter) || {};
-  const cacheKey = 'r:' + Utilities.base64Encode(
-    Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, JSON.stringify(params)));
+  const diag = e && e.parameter && e.parameter.diag;
+  const key = diag ? 'diag' : 'result';
   const cache = CacheService.getScriptCache();
-  let body = cache.get(cacheKey);
+  let body = cache.get(key);
   if (!body) {
-    body = JSON.stringify(collect(params));
-    if (body.length < 100000) cache.put(cacheKey, body, CACHE_SECONDS);
+    body = JSON.stringify(diag ? diagnose() : collect());
+    if (body.length < 100000) cache.put(key, body, diag ? DIAG_CACHE_SECONDS : CACHE_SECONDS);
   }
   return ContentService.createTextOutput(body).setMimeType(ContentService.MimeType.JSON);
 }
 
-function collect(params) {
+function collect() {
   const out = { fetchedAt: new Date().toISOString(), nfb: {}, vd: {}, tpe: {}, events: [], updated: {}, errors: [] };
+  const attempt = function (name, fn) {
+    try { fn(); } catch (err) { out.errors.push(name + ': ' + err.message); }
+  };
 
-  // 逐一讀取：fetchAll 只要一個來源連線失敗就會整批丟例外
-  Object.keys(FEEDS).forEach(function (name) {
-    try {
-      const res = UrlFetchApp.fetch(FEEDS[name], { muteHttpExceptions: true, followRedirects: true });
-      if (res.getResponseCode() !== 200) throw new Error('HTTP ' + res.getResponseCode());
-      const xml = xmlText(res);
-      if (name === 'nfb') {
-        out.updated.nfb = tag(xml, 'UpdateTime');
-        idList(params.nfb).forEach(function (id) { out.nfb[id] = parseNfbSection(xml, id); });
-      } else if (name === 'vd') {
-        out.updated.vd = tag(xml, 'UpdateTime');
-        idList(params.vd).forEach(function (id) { out.vd[id] = parseVd(xml, id); });
-      } else if (name === 'events') {
-        out.updated.events = tag(xml, 'UpdateTime');
-        out.events = parseEvents(xml);
-      } else {
-        out.updated.tpe = tag(xml, 'vd:ExchangeTime');
-        idList(params.tpe).forEach(function (id) { out.tpe[id] = parseTaipeiSection(xml, id); });
-      }
-    } catch (err) {
-      out.errors.push(name + ': ' + err.message);
-    }
+  attempt('nfb', function () {
+    const json = tdxJson('Live/Freeway', idFilter('SectionID', NFB_IDS));
+    out.updated.nfb = json.UpdateTime || '';
+    (json.LiveTraffics || []).forEach(function (s) {
+      out.nfb[s.SectionID] = { speed: Number(s.TravelSpeed), time: Number(s.TravelTime) };
+    });
+  });
+  attempt('vd', function () {
+    const json = tdxJson('Live/VD/Freeway', idFilter('VDID', VD_IDS));
+    out.updated.vd = json.UpdateTime || '';
+    (json.VDLives || []).forEach(function (v) { out.vd[v.VDID] = vdSpeed(v); });
+  });
+  // 事件只是提醒，不影響時間計算，讀不到不算錯誤
+  try { out.events = fetchEvents(); } catch (err) { out.eventsError = err.message; }
+  attempt('tpe', function () {
+    const res = UrlFetchApp.fetch(TAIPEI_VD, { muteHttpExceptions: true });
+    if (res.getResponseCode() !== 200) throw new Error('HTTP ' + res.getResponseCode());
+    const xml = xmlText(res);
+    out.updated.tpe = tag(xml, 'vd:ExchangeTime');
+    TPE_IDS.forEach(function (id) { out.tpe[id] = parseTaipeiSection(xml, id); });
   });
   return out;
+}
+
+// ?diag=1：確認金鑰與 TDX 路徑是否可用。只回傳狀態與欄位名稱，不含金鑰或 token
+function diagnose() {
+  const report = { token: 'ok', paths: {} };
+  try {
+    getToken();
+  } catch (err) {
+    report.token = err.message;
+    return report;
+  }
+  const paths = ['Live/Freeway', 'Live/VD/Freeway'].concat(EVENT_PATHS);
+  paths.forEach(function (path) {
+    const res = tdxFetch(path, '$top=1');
+    const entry = { status: res.getResponseCode() };
+    if (entry.status === 200) {
+      const json = JSON.parse(res.getContentText('UTF-8'));
+      entry.keys = Object.keys(json);
+      const list = entry.keys.map(function (k) { return json[k]; }).filter(Array.isArray)[0];
+      if (list && list[0]) entry.itemKeys = Object.keys(list[0]);
+    }
+    report.paths[path] = entry;
+  });
+  return report;
+}
+
+function getToken() {
+  const cache = CacheService.getScriptCache();
+  const cached = cache.get('tdxToken');
+  if (cached) return cached;
+  const props = PropertiesService.getScriptProperties();
+  const id = props.getProperty('TDX_CLIENT_ID');
+  const secret = props.getProperty('TDX_CLIENT_SECRET');
+  if (!id || !secret) throw new Error('指令碼屬性沒有設定 TDX 金鑰');
+  const res = UrlFetchApp.fetch(TDX_TOKEN, {
+    method: 'post',
+    payload: { grant_type: 'client_credentials', client_id: id, client_secret: secret },
+    muteHttpExceptions: true,
+  });
+  if (res.getResponseCode() !== 200) throw new Error('TDX 金鑰驗證失敗 HTTP ' + res.getResponseCode());
+  const token = JSON.parse(res.getContentText('UTF-8')).access_token;
+  cache.put('tdxToken', token, TOKEN_CACHE_SECONDS);
+  return token;
+}
+
+function tdxFetch(path, query) {
+  return UrlFetchApp.fetch(TDX_API + path + '?$format=JSON&' + query, {
+    headers: { Authorization: 'Bearer ' + getToken() },
+    muteHttpExceptions: true,
+  });
+}
+
+function tdxJson(path, query) {
+  const res = tdxFetch(path, query);
+  if (res.getResponseCode() !== 200) throw new Error('TDX ' + path + ' HTTP ' + res.getResponseCode());
+  return JSON.parse(res.getContentText('UTF-8'));
+}
+
+function idFilter(field, ids) {
+  const clause = ids.map(function (id) { return field + " eq '" + id + "'"; }).join(' or ');
+  return '$filter=' + encodeURIComponent(clause);
+}
+
+// 各車道速率以車流量加權；沒有車流時回傳 null，由前端改用估算
+function vdSpeed(vd) {
+  let sum = 0, weight = 0;
+  (vd.LinkFlows || []).forEach(function (flow) {
+    (flow.Lanes || []).forEach(function (lane) {
+      const volume = (lane.Vehicles || []).reduce(function (a, v) { return a + Math.max(0, Number(v.Volume) || 0); }, 0);
+      if (lane.Speed > 0 && volume > 0) { sum += lane.Speed * volume; weight += volume; }
+    });
+  });
+  return { speed: weight ? Math.round(sum / weight) : null, volume: weight };
+}
+
+function fetchEvents() {
+  for (let i = 0; i < EVENT_PATHS.length; i++) {
+    const res = tdxFetch(EVENT_PATHS[i], '$top=500');
+    if (res.getResponseCode() !== 200) continue;
+    const json = JSON.parse(res.getContentText('UTF-8'));
+    const list = json.LiveEvents || json.Events || json.Newses || [];
+    return list.map(function (ev) {
+      const loc = (ev.Location && ev.Location.FreeExpressHighway) || {};
+      return {
+        title: ev.EventTitle || ev.Title || '',
+        description: ev.Description || '',
+        road: loc.Road || '',
+        direction: loc.Direction || '',
+        startKm: loc.StartKM || '',
+        endKm: loc.EndKM || '',
+        severity: (ev.Impact && Number(ev.Impact.Severity)) || 0,
+      };
+    }).filter(function (ev) { return EVENT_ROADS.indexOf(ev.road) >= 0; });
+  }
+  throw new Error('TDX 事件路徑都不可用');
 }
 
 function xmlText(res) {
@@ -58,10 +160,6 @@ function xmlText(res) {
   const gzipped = bytes.length > 2 && (bytes[0] & 0xff) === 0x1f && (bytes[1] & 0xff) === 0x8b;
   if (!gzipped) return res.getContentText('UTF-8');
   return Utilities.ungzip(res.getBlob().setContentType('application/x-gzip')).getDataAsString('UTF-8');
-}
-
-function idList(s) {
-  return String(s || '').split(',').map(function (x) { return x.trim(); }).filter(Boolean);
 }
 
 function tag(xml, name) {
@@ -72,52 +170,9 @@ function tag(xml, name) {
   return b < 0 ? '' : xml.slice(a + open.length, b).trim();
 }
 
-// 從整份 XML 切出 ID 所在的那一筆，避免把數 MB 的檔案全部解析
-function block(xml, idTag, id, closeTag) {
-  const a = xml.indexOf('<' + idTag + '>' + id + '</' + idTag + '>');
-  if (a < 0) return '';
-  const b = xml.indexOf('</' + closeTag + '>', a);
-  return b < 0 ? '' : xml.slice(a, b);
-}
-
-function parseNfbSection(xml, id) {
-  const b = block(xml, 'SectionID', id, 'LiveTraffic');
-  if (!b) return null;
-  return { speed: Number(tag(b, 'TravelSpeed')), time: Number(tag(b, 'TravelTime')) };
-}
-
 function parseTaipeiSection(xml, id) {
-  const b = block(xml, 'vd:SectionId', id, 'vd:SectionData');
-  if (!b) return null;
+  const a = xml.indexOf('<vd:SectionId>' + id + '</vd:SectionId>');
+  if (a < 0) return null;
+  const b = xml.slice(a, xml.indexOf('</vd:SectionData>', a));
   return { speed: Number(tag(b, 'vd:AvgSpd')), occ: Number(tag(b, 'vd:AvgOcc')) };
-}
-
-// 各車道速率以車流量加權；沒有車流時回傳 null，由前端改用估算
-function parseVd(xml, id) {
-  const b = block(xml, 'VDID', id, 'VDLive');
-  if (!b) return null;
-  let sum = 0, weight = 0;
-  b.split('<Lane>').slice(1).forEach(function (lane) {
-    const head = lane.split('<Vehicles>')[0];
-    const speed = Number(tag(head, 'Speed'));
-    let volume = 0;
-    lane.split('<Vehicle>').slice(1).forEach(function (v) { volume += Math.max(0, Number(tag(v, 'Volume')) || 0); });
-    if (speed > 0 && volume > 0) { sum += speed * volume; weight += volume; }
-  });
-  return { speed: weight ? Math.round(sum / weight) : null, volume: weight };
-}
-
-function parseEvents(xml) {
-  return xml.split('<LiveEvent>').slice(1).map(function (b) {
-    return {
-      title: tag(b, 'EventTitle'),
-      description: tag(b, 'Description'),
-      road: tag(b, 'Road'),
-      direction: tag(b, 'Direction'),
-      startKm: tag(b, 'StartKM'),
-      endKm: tag(b, 'EndKM'),
-      severity: Number(tag(b, 'Severity')) || 0,
-      effective: tag(b, 'EffectiveTime'),
-    };
-  }).filter(function (ev) { return EVENT_ROADS.indexOf(ev.road) >= 0; });
 }
