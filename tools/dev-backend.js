@@ -42,11 +42,12 @@ function fakeTdx(url) {
     return { UpdateTime: text(doc, 'UpdateTime'), LiveTraffics };
   }
   const doc = xmlDoc('events');
+  const directionCode = { 東向: 0, 西向: 1, 南向: 2, 北向: 3, 雙向: 4 };
   return {
     LiveEvents: [...doc.getElementsByTagName('LiveEvent')].map((ev) => ({
       EventTitle: text(ev, 'EventTitle'),
       Description: text(ev, 'Description'),
-      Location: { FreeExpressHighway: { Road: text(ev, 'Road'), Direction: text(ev, 'Direction'), StartKM: text(ev, 'StartKM'), EndKM: text(ev, 'EndKM') } },
+      Location: { FreeExpressHighway: { Road: text(ev, 'Road'), Direction: directionCode[text(ev, 'Direction')], StartKM: text(ev, 'StartKM'), EndKM: text(ev, 'EndKM') } },
       Impact: { Severity: Number(text(ev, 'Severity')) },
     })),
   };

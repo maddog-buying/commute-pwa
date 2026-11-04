@@ -4,7 +4,10 @@
 // 金鑰放在「專案設定 → 指令碼屬性」：TDX_CLIENT_ID、TDX_CLIENT_SECRET，不要寫進程式碼。
 // 路段固定寫在這裡、回應整份快取，所以公開網址不會被人用來消耗金鑰額度。
 
-const TDX_API = 'https://tdx.transportdata.tw/api/basic/v2/Road/Traffic/';
+const TDX_API = 'https://tdx.transportdata.tw/api/basic/';
+const TDX_SECTIONS = 'v2/Road/Traffic/Live/Freeway';
+const TDX_VD = 'v2/Road/Traffic/Live/VD/Freeway';
+const TDX_EVENTS = 'v1/Traffic/RoadEvent/LiveEvent/Freeway';
 const TDX_TOKEN = 'https://tdx.transportdata.tw/auth/realms/TDXConnect/protocol/openid-connect/token';
 const TAIPEI_VD = 'https://tcgbusfs.blob.core.windows.net/blobtisv/GetVD.xml.gz'; // 未壓縮的 GetVD.xml 停在 2024 年，不能用
 
@@ -12,7 +15,7 @@ const NFB_IDS = ['0366', '0190', '0194', '0192'];
 const VD_IDS = ['VD-N3-N-16-I-EN-南港系統-5N3N', 'VD-N3N-N-0.700-M-LOOP'];
 const TPE_IDS = ['Z6310G0', 'Z6330G0', 'Z6330G5', 'ZRPSV00', 'ZSGRX60', 'ZSPRA60', 'ZT5QV00', 'ZHX4E40', 'ZKP4L00'];
 const EVENT_ROADS = ['國道五號', '國道三號', '南港聯絡道'];
-const EVENT_PATHS = ['Live/Event/Freeway', 'Live/News/Freeway', 'News/Freeway']; // TDX 文件要有金鑰才能驗證，依序嘗試
+const DIRECTIONS = ['東向', '西向', '南向', '北向', '雙向']; // TDX 的方向是代碼
 
 const CACHE_SECONDS = 55; // 來源每分鐘更新
 const TOKEN_CACHE_SECONDS = 21600; // CacheService 上限 6 小時，token 本身效期一天
@@ -37,14 +40,14 @@ function collect() {
   };
 
   attempt('nfb', function () {
-    const json = tdxJson('Live/Freeway', idFilter('SectionID', NFB_IDS));
+    const json = tdxJson(TDX_SECTIONS, idFilter('SectionID', NFB_IDS));
     out.updated.nfb = json.UpdateTime || '';
     (json.LiveTraffics || []).forEach(function (s) {
       out.nfb[s.SectionID] = { speed: Number(s.TravelSpeed), time: Number(s.TravelTime) };
     });
   });
   attempt('vd', function () {
-    const json = tdxJson('Live/VD/Freeway', idFilter('VDID', VD_IDS));
+    const json = tdxJson(TDX_VD, idFilter('VDID', VD_IDS));
     out.updated.vd = json.UpdateTime || '';
     (json.VDLives || []).forEach(function (v) { out.vd[v.VDID] = vdSpeed(v); });
   });
@@ -69,8 +72,7 @@ function diagnose() {
     report.token = err.message;
     return report;
   }
-  const paths = ['Live/Freeway', 'Live/VD/Freeway'].concat(EVENT_PATHS);
-  paths.forEach(function (path) {
+  [TDX_SECTIONS, TDX_VD, TDX_EVENTS].forEach(function (path) {
     const res = tdxFetch(path, '$top=1');
     const entry = { status: res.getResponseCode() };
     if (entry.status === 200) {
@@ -80,6 +82,15 @@ function diagnose() {
       if (list && list[0]) entry.itemKeys = Object.keys(list[0]);
     }
     report.paths[path] = entry;
+  });
+  // 事件的原始路名與方向，用來確認 normalizeRoad 與 DIRECTIONS 符合實際資料
+  const events = tdxJson(TDX_EVENTS, '$top=500').LiveEvents || [];
+  report.eventCount = events.length;
+  report.eventRoads = {};
+  events.forEach(function (ev) {
+    const loc = (ev.Location && ev.Location.FreeExpressHighway) || {};
+    const key = loc.Road + ' / ' + loc.Direction + ' → ' + normalizeRoad(loc.Road) + ' / ' + directionText(loc.Direction);
+    report.eventRoads[key] = (report.eventRoads[key] || 0) + 1;
   });
   return report;
 }
@@ -134,25 +145,31 @@ function vdSpeed(vd) {
 }
 
 function fetchEvents() {
-  for (let i = 0; i < EVENT_PATHS.length; i++) {
-    const res = tdxFetch(EVENT_PATHS[i], '$top=500');
-    if (res.getResponseCode() !== 200) continue;
-    const json = JSON.parse(res.getContentText('UTF-8'));
-    const list = json.LiveEvents || json.Events || json.Newses || [];
-    return list.map(function (ev) {
-      const loc = (ev.Location && ev.Location.FreeExpressHighway) || {};
-      return {
-        title: ev.EventTitle || ev.Title || '',
-        description: ev.Description || '',
-        road: loc.Road || '',
-        direction: loc.Direction || '',
-        startKm: loc.StartKM || '',
-        endKm: loc.EndKM || '',
-        severity: (ev.Impact && Number(ev.Impact.Severity)) || 0,
-      };
-    }).filter(function (ev) { return EVENT_ROADS.indexOf(ev.road) >= 0; });
-  }
-  throw new Error('TDX 事件路徑都不可用');
+  return (tdxJson(TDX_EVENTS, '$top=500').LiveEvents || []).map(function (ev) {
+    const loc = (ev.Location && ev.Location.FreeExpressHighway) || {};
+    return {
+      title: ev.EventTitle || '',
+      description: ev.Description || '',
+      road: normalizeRoad(loc.Road),
+      direction: directionText(loc.Direction),
+      startKm: loc.StartKM || '',
+      endKm: loc.EndKM || '',
+      severity: (ev.Impact && Number(ev.Impact.Severity)) || 0,
+    };
+  }).filter(function (ev) { return EVENT_ROADS.indexOf(ev.road) >= 0; });
+}
+
+// 路名可能寫成國道5號或國道五號；國道三甲是另一條路
+function normalizeRoad(name) {
+  const s = String(name || '');
+  if (s.indexOf('南港聯絡') >= 0) return '南港聯絡道';
+  if (/國道\s*(5|五)號/.test(s)) return '國道五號';
+  if (/國道\s*(3|三)號(?!甲)/.test(s)) return '國道三號';
+  return s;
+}
+
+function directionText(value) {
+  return typeof value === 'number' ? (DIRECTIONS[value] || '') : String(value || '');
 }
 
 function xmlText(res) {

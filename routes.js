@@ -173,7 +173,7 @@ function eventsFor(route, events) {
   return (events || []).filter((ev) => route.zones.some((z) => {
     if (z.road !== ev.road) return false;
     if (!z.dir) return true;
-    if (ev.direction !== z.dir) return false;
+    if (ev.direction !== z.dir && ev.direction !== '雙向') return false;
     const a = kmOf(ev.startKm);
     const b = kmOf(ev.endKm);
     if (a === null) return false;
