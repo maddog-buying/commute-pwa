@@ -35,11 +35,31 @@ RESEARCH_B = (25.046936, 121.615421, None)   # 研究院路接忠孝東路
 # 每個項目：(這段路徑的定位點, 切成哪些路段的 km)
 TO_RING = [([N3_EXIT, LINK_08, RING_A], [1.4]), ([RING_A, RING_B], [0.33]), ([RING_B, RING_C], [3.25])]
 TAIL = [([RING_C, TD_1, TD_2, OFFICE], [0.9, 1.4, 0.35, 0.5, 0.5, 0.4])]
-ROUTES = {
+WORK = {
     1: [([S, N5_ON, N5_END], [0.65, 4.0]), ([N5_END, N3_EXIT], [0.4, 1.2])] + TO_RING + TAIL,
     2: [([S, N3_204], [6.0]), ([N3_204, N3_163], [4.3]), ([N3_163, N3_154, N3_EXIT], [0.2, 1.2])] + TO_RING + TAIL,
     3: [([S, SHENNAN_END], [4.9]), ([SHENNAN_END, NANSHEN, JIUZHUANG], [3.6]), ([JIUZHUANG, RESEARCH_A], [1.3]),
         ([RESEARCH_A, RESEARCH_B], [0.9]), ([RESEARCH_B, RING_B], [2.5]), ([RING_B, RING_C], [3.25])] + TAIL,
+}
+
+# 下班方向
+RING_OUT_1 = (25.058616, 121.584863, 70)   # 環東出城 彩虹橋段起點
+RING_OUT_2 = (25.062585, 121.616541, 85)   # 環東出城 彩虹橋段終點
+LINK_S = (25.0513187, 121.6205299, 170)    # 聯絡道南向 0.56K
+N3S_155 = (25.0386372, 121.6231115, 205)   # 國三南向 15.5K（聯絡道匯入之後）
+N3S_165 = (25.032984, 121.6160817, 235)    # 國三南向 16.5K
+N3S_198 = (25.010678, 121.59672, 190)      # 國三南向 19.8K
+N5S_02 = (25.034582, 121.625124, 110)      # 國五南向 0.2K
+N5S_20 = (25.02442, 121.639372, 160)       # 國五南向 2.0K
+N5S_32 = (25.015304, 121.642974, 165)      # 國五南向 3.2K（3.8K 已過石碇出口）
+
+HOME_HEAD = [([OFFICE, RING_OUT_1], [0.9, 0.85, 1.0, 1.6]), ([RING_OUT_1, RING_OUT_2], [3.25])]
+TO_N3S = HOME_HEAD + [([RING_OUT_2, LINK_S, N3S_155], [0.2, 2.2])]
+HOME = {
+    1: TO_N3S + [([N3S_155, N5S_02], [1.2, 0.4]), ([N5S_02, N5S_20, N5S_32], [4.0]), ([N5S_32, S], [0.65])],
+    2: TO_N3S + [([N3S_155, N3S_165], [1.2, 0.2]), ([N3S_165, N3S_198], [4.3]), ([N3S_198, S], [6.0])],
+    3: HOME_HEAD + [([RING_OUT_2, RESEARCH_B], [0.3, 2.2]), ([RESEARCH_B, RESEARCH_A], [0.9]), ([RESEARCH_A, JIUZHUANG], [1.3]),
+                    ([JIUZHUANG, NANSHEN, SHENNAN_END], [3.6]), ([SHENNAN_END, S], [4.9])],
 }
 
 
@@ -101,16 +121,24 @@ def split_by_km(path, weights):
     return parts
 
 
-def main():
+def build(routes):
     out = {}
-    for route_id, legs in ROUTES.items():
+    for route_id, legs in routes.items():
         segments = []
         for points, weights in legs:
             segments += split_by_km(fetch_path(points), weights)
             time.sleep(1.5)
         out[route_id] = segments
         print(route_id, round(sum(path_km(s) for s in segments), 2), [round(path_km(s), 2) for s in segments])
-    body = json.dumps(out, separators=(',', ':'))
+    return out
+
+
+def main():
+    print('上班')
+    work = build(WORK)
+    print('下班')
+    home = build(HOME)
+    body = json.dumps({'work': work, 'home': home}, separators=(',', ':'))
     with open(os.path.join(ROOT, 'routes-geometry.js'), 'w', encoding='utf-8') as f:
         f.write('// tools/build_geometry.py 產生，路徑資料 © OpenStreetMap contributors\n')
         f.write(f'const ROUTE_GEOMETRY = {body};\n')

@@ -1,6 +1,6 @@
 // 離線快取：改版時把版本號 +1，舊快取會自動清掉
 // 與瘋狗貨態、輪盤共用網域，只能清理 commute- 開頭的快取
-const CACHE = 'commute-v5';
+const CACHE = 'commute-v6';
 const ASSETS = [
   './',
   'index.html',

@@ -14,24 +14,28 @@ function metersBetween(a, b) {
   return Math.hypot(dx, dy);
 }
 
-// routeId → 各路段的座標與累計里程
-const ROUTE_INDEX = Object.fromEntries(Object.entries(ROUTE_GEOMETRY).map(([id, segments]) => {
-  let total = 0;
-  const indexed = segments.map((points) => {
-    const startM = total;
-    const lengths = points.slice(1).map((p, i) => metersBetween(points[i], p));
-    const lengthM = lengths.reduce((a, b) => a + b, 0);
-    total += lengthM;
-    return { points, lengths, startM, lengthM };
-  });
-  return [id, { segments: indexed, totalM: total }];
-}));
+function indexRoutes(routes) {
+  return Object.fromEntries(Object.entries(routes).map(([id, segments]) => {
+    let total = 0;
+    const indexed = segments.map((points) => {
+      const startM = total;
+      const lengths = points.slice(1).map((p, i) => metersBetween(points[i], p));
+      const lengthM = lengths.reduce((a, b) => a + b, 0);
+      total += lengthM;
+      return { points, lengths, startM, lengthM };
+    });
+    return [id, { segments: indexed, totalM: total }];
+  }));
+}
+
+// 上下班 → routeId → 各路段的座標與累計里程
+const ROUTE_INDEX = { work: indexRoutes(ROUTE_GEOMETRY.work), home: indexRoutes(ROUTE_GEOMETRY.home) };
 
 // 找出路線上離這個位置最近的點；minM 之前的部分不考慮
 function locate(routeId, point, minM = 0) {
   const scale = Math.cos((point[0] * Math.PI) / 180);
   let best = null;
-  ROUTE_INDEX[routeId].segments.forEach((segment, seg) => {
+  ROUTE_INDEX[MODE][routeId].segments.forEach((segment, seg) => {
     let walked = segment.startM;
     segment.lengths.forEach((length, i) => {
       const a = segment.points[i];
@@ -99,8 +103,9 @@ function createTracker() {
           if (time - offSince[id] >= ELIMINATE_AFTER_MS) this.eliminated.add(id);
         });
       }
-      const office = ROUTE_GEOMETRY[1][ROUTE_GEOMETRY[1].length - 1].slice(-1)[0];
-      this.arrived = metersBetween(point, office) <= ARRIVE_M;
+      const segments = ROUTE_GEOMETRY[MODE][1];
+      const destination = segments[segments.length - 1].slice(-1)[0];
+      this.arrived = metersBetween(point, destination) <= ARRIVE_M;
     },
   };
 }

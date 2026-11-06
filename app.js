@@ -14,7 +14,7 @@ async function fetchData() {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 45000);
   try {
-    const res = await fetch(`${window.COMMUTE_API}?${apiQuery()}`, { signal: controller.signal });
+    const res = await fetch(window.COMMUTE_API, { signal: controller.signal });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return await res.json();
   } finally {
@@ -216,10 +216,10 @@ function render() {
 function whereText() {
   const t = live.tracker;
   if (live.geoProblem) return live.geoProblem;
-  if (!t || !t.fix) return '等待定位中，時間先從石碇服務區算起';
+  if (!t || !t.fix) return `等待定位中，時間先從${MODES[MODE].from}算起`;
   const accuracy = `定位誤差約 ${Math.round(t.fix.accuracy)} 公尺`;
   if (t.weak) return `定位不穩（${accuracy}），暫用上一個位置`;
-  if (t.off && !t.everMatched) return `不在路線上，時間從石碇服務區算起（${accuracy}）`;
+  if (t.off && !t.everMatched) return `不在路線上，時間從${MODES[MODE].from}算起（${accuracy}）`;
   if (t.off) return `偏離路線，以最後位置計算（${accuracy}）`;
   const id = live.recommendedId && !t.eliminated.has(live.recommendedId) ? live.recommendedId : ROUTES.find((r) => !t.eliminated.has(r.id)).id;
   const route = ROUTES.find((r) => r.id === id);
@@ -261,22 +261,22 @@ function handleFix(fix) {
   live.dirty = true;
   if (live.tracker.arrived) {
     render();
-    stopLive('已抵達國票金控，自動停止分析。');
+    stopLive(`已抵達${MODES[MODE].to}，自動停止分析。`);
   }
 }
 
 function startGeolocation() {
   if (!('geolocation' in navigator)) {
-    live.geoProblem = '這台裝置無法定位，時間從石碇服務區算起';
+    live.geoProblem = `這台裝置無法定位，時間從${MODES[MODE].from}算起`;
     return;
   }
   live.watchId = navigator.geolocation.watchPosition(
     (pos) => handleFix({ lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy }),
     (err) => {
       if (err.code === err.PERMISSION_DENIED) {
-        live.geoProblem = '沒有定位權限，時間從石碇服務區算起；路況仍會每分鐘更新';
+        live.geoProblem = `沒有定位權限，時間從${MODES[MODE].from}算起；路況仍會每分鐘更新`;
       } else if (!live.tracker.fix) {
-        live.geoProblem = '暫時抓不到定位，時間從石碇服務區算起';
+        live.geoProblem = `暫時抓不到定位，時間從${MODES[MODE].from}算起`;
       }
     },
     { enableHighAccuracy: true, maximumAge: 5000, timeout: 20000 },
@@ -350,6 +350,20 @@ document.addEventListener('visibilitychange', () => {
   tick();
 });
 
+function switchMode(mode) {
+  if (live.running) stopLive('');
+  setMode(mode);
+  Object.assign(live, { tracker: null, data: null, recommendedId: null, change: null, fetchProblem: '' });
+  document.querySelectorAll('.mode-switch button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.mode === mode)));
+  $('tripLabel').textContent = `${MODES[mode].from} → ${MODES[mode].to}`;
+  $('verdict').hidden = true;
+  $('legend').hidden = true;
+  $('intro').hidden = false;
+  $('stopNote').hidden = true;
+  $('status').innerHTML = '';
+  renderIdle();
+}
+
 // 監視器：MJPEG 串流會一直占用連線與流量，同時間只開一支，關閉時要清掉 src
 const viewer = { list: [], index: 0 };
 
@@ -392,8 +406,9 @@ $('routes').addEventListener('click', (e) => {
 });
 
 $('analyze').addEventListener('click', () => (live.running ? stopLive('') : startLive()));
+document.querySelectorAll('.mode-switch button').forEach((b) => b.addEventListener('click', () => switchMode(b.dataset.mode)));
 if (DEMO) $('demoBanner').hidden = false;
-renderIdle();
+switchMode(new Date().getHours() >= 12 ? 'home' : 'work'); // 下午打開多半是要下班
 
 if ('serviceWorker' in navigator && !DEV) {
   navigator.serviceWorker.register('sw.js').catch(() => {});

@@ -1,4 +1,4 @@
-// ?demo：虛構的「國五塞車」情境，只用來看畫面，不是真實路況
+// ?demo：虛構的塞車情境（上班塞國五，下班塞國三接國五），只用來看畫面，不是真實路況
 window.DEMO_DATA = {
   fetchedAt: new Date().toISOString(),
   updated: { nfb: new Date().toISOString() },
@@ -8,10 +8,16 @@ window.DEMO_DATA = {
     '0190': { speed: 42, time: 103 },
     '0194': { speed: 74, time: 209 },
     '0192': { speed: 66, time: 11 },
+    '0189': { speed: 38, time: 114 },
+    '0191': { speed: 72, time: 10 },
+    '0193': { speed: 80, time: 194 },
+    '0365': { speed: 15, time: 960 },
   },
   vd: {
     'VD-N3-N-16-I-EN-南港系統-5N3N': { speed: 14 },
     'VD-N3N-N-0.700-M-LOOP': { speed: 38 },
+    'VD-N3-S-16-O-NE-1-南港系統': { speed: 11 },
+    'VD-N3N-S-0.560-M-LOOP': { speed: 34 },
   },
   tpe: {
     Z6310G0: { speed: 55 },
@@ -22,6 +28,10 @@ window.DEMO_DATA = {
     ZT5QV00: { speed: 31 },
     ZHX4E40: { speed: 24 },
     ZKP4L00: { speed: 19 },
+    Z6160C3: { speed: 42 },
+    Z6180A0: { speed: 30 },
+    Z6171C0: { speed: 35 },
+    ZPMSV41: { speed: 28 },
   },
   events: [{
     title: '事故',

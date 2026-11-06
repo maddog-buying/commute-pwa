@@ -11,9 +11,12 @@ const TDX_EVENTS = 'v1/Traffic/RoadEvent/LiveEvent/Freeway';
 const TDX_TOKEN = 'https://tdx.transportdata.tw/auth/realms/TDXConnect/protocol/openid-connect/token';
 const TAIPEI_VD = 'https://tcgbusfs.blob.core.windows.net/blobtisv/GetVD.xml.gz'; // 未壓縮的 GetVD.xml 停在 2024 年，不能用
 
-const NFB_IDS = ['0366', '0190', '0194', '0192'];
-const VD_IDS = ['VD-N3-N-16-I-EN-南港系統-5N3N', 'VD-N3N-N-0.700-M-LOOP'];
-const TPE_IDS = ['Z6310G0', 'Z6330G0', 'Z6330G5', 'ZRPSV00', 'ZSGRX60', 'ZSPRA60', 'ZT5QV00', 'ZHX4E40', 'ZKP4L00'];
+const NFB_IDS = ['0366', '0190', '0194', '0192', '0189', '0191', '0193', '0365'];
+const VD_IDS = ['VD-N3-N-16-I-EN-南港系統-5N3N', 'VD-N3N-N-0.700-M-LOOP', 'VD-N3-S-16-O-NE-1-南港系統', 'VD-N3N-S-0.560-M-LOOP'];
+const TPE_IDS = [
+  'Z6310G0', 'Z6330G0', 'Z6330G5', 'ZRPSV00', 'ZSGRX60', 'ZSPRA60', 'ZT5QV00', 'ZHX4E40', 'ZKP4L00', // 上班
+  'ZPMSV41', 'Z6160C3', 'Z6180A0', 'Z6171C0', // 下班
+];
 const EVENT_ROADS = ['國道五號', '國道三號', '南港聯絡道'];
 const DIRECTIONS = ['東向', '西向', '南向', '北向', '雙向']; // TDX 的方向是代碼
 

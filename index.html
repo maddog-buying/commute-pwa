@@ -3,12 +3,12 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>上班路線</title>
-  <meta name="description" content="石碇服務區到國票金控的三條路線，依即時路況選最快">
+  <title>上下班路線</title>
+  <meta name="description" content="石碇服務區與國票金控之間的三條路線，依即時路況選最快">
   <meta name="theme-color" content="#0c0e10">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="上班路線">
+  <meta name="apple-mobile-web-app-title" content="上下班路線">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="icons/icon-192.png">
@@ -17,10 +17,14 @@
 <body>
   <main>
     <header class="top">
-      <h1>上班路線</h1>
-      <p>石碇服務區 → 國票金控</p>
+      <h1>上下班路線</h1>
+      <p id="tripLabel"></p>
     </header>
-    <p id="demoBanner" class="demo" hidden>示範資料（虛構的國五塞車情境），不是真實路況</p>
+    <div class="mode-switch" role="group" aria-label="上班或下班">
+      <button type="button" data-mode="work" aria-pressed="true">上班</button>
+      <button type="button" data-mode="home" aria-pressed="false">下班</button>
+    </div>
+    <p id="demoBanner" class="demo" hidden>示範資料（虛構的塞車情境），不是真實路況</p>
     <p id="intro" class="intro">按下開始後會定位，並每分鐘更新一次路況，比較你還能走的路線。位置只留在手機上。</p>
     <div id="liveBar" class="live-bar" role="status" hidden>
       <p><i class="pulse"></i>即時分析中　<span id="liveState"></span></p>

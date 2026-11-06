@@ -1,8 +1,8 @@
 // 路線定義與分析邏輯。src：nfb=高公局路段、vd=高公局偵測器、tpe=臺北市路段、est=無即時資料
 // est:[離峰, 尖峰] 是估算車速，即時資料缺漏時也會用它；delay 是路口號誌的秒數，車速資料算不到
 
-const ORIGIN = '25.0096,121.6452'; // 石碇服務區
-const DESTINATION = '台北市中山區樂群三路128號'; // 國票金控
+const SERVICE_AREA = '25.0096,121.6452'; // 石碇服務區
+const OFFICE_ADDRESS = '台北市中山區樂群三路128號'; // 國票金控
 
 const cam = (label, host, id) => ({ label, url: `https://${host}.freeway.gov.tw/abs2mjpg/bmjpg?camera=${id}` });
 
@@ -17,6 +17,12 @@ const CAMS = {
   n3_148: cam('國三 14.8K 南港出口', 'cctvn', '31480'),
   nn_00: cam('南港聯絡道起點', 'cctvn', '31472'),
   nn_08: cam('南港聯絡道 接環東', 'cctvn', '31471'),
+  n3s_148: cam('國三南向 14.8K 聯絡道匯入', 'cctvn', '31470'),
+  n3s_151: cam('國三南向 15.1K', 'cctvn', '31510'),
+  n3s_165: cam('國三南向 16.5K 南深路', 'cctvn', '31640'),
+  n3s_174: cam('國三南向 17.4K', 'cctvn', '31730'),
+  n3s_185: cam('國三南向 18.5K', 'cctvn', '71850'),
+  n3s_198: cam('國三南向 19.8K 往木柵', 'cctvn', '71980'),
 };
 
 const TO_LINK_ROAD = [
@@ -35,7 +41,7 @@ const TAIL = [
   { name: '樂群路→國票金控', group: '堤頂大道→國票金控', km: 0.4, src: 'est', free: 25, est: [25, 18], delay: 60 },
 ];
 
-const ROUTES = [
+const WORK_ROUTES = [
   {
     id: 1,
     name: '國五直上',
@@ -84,6 +90,84 @@ const ROUTES = [
     zones: [],
   },
 ];
+
+// 下班方向。臺北市的研究院路只有北向資料、堤頂大道只有部分南向資料，其餘路段用估算
+const HOME_HEAD = [
+  { name: '樂群路→基湖路', group: '國票金控→環東', km: 0.9, src: 'est', free: 25, est: [25, 18], delay: 60 },
+  { name: '堤頂大道 基湖路→港墘路', group: '國票金控→環東', km: 0.85, src: 'est', free: 45, est: [45, 30], delay: 60 },
+  { name: '堤頂大道 港墘路→舊宗路', group: '國票金控→環東', km: 1.0, src: 'tpe', id: 'ZPMSV41', free: 50, est: [45, 30], delay: 30 },
+  { name: '舊宗路→環東上匝道', group: '國票金控→環東', km: 1.6, src: 'est', free: 35, est: [35, 22], delay: 60 },
+];
+const RING_OUT = { name: '環東 彩虹橋段', group: '環東大道', km: 3.25, src: 'tpe', id: 'Z6160C3', free: 70, est: [70, 45] };
+const TO_N3_SOUTH = [
+  { name: '環東往國三', group: '環東大道', km: 0.2, src: 'tpe', id: 'Z6180A0', free: 60, est: [55, 35] },
+  { name: '南港聯絡道', km: 2.2, src: 'vd', id: 'VD-N3N-S-0.560-M-LOOP', free: 60, est: [55, 35] },
+  { name: '國三 南港→南港系統', km: 1.2, src: 'nfb', id: '0189', free: 85, est: [85, 50] },
+];
+
+const HOME_ROUTES = [
+  {
+    id: 1,
+    name: '國五直下',
+    via: '堤頂 → 環東 → 國三 → 國五 → 石碇',
+    waypoints: ['25.0513,121.6205', '25.0244,121.6394'],
+    segments: [
+      ...HOME_HEAD, RING_OUT, ...TO_N3_SOUTH,
+      { name: '南港系統匝道（國三接國五）', km: 0.4, src: 'vd', id: 'VD-N3-S-16-O-NE-1-南港系統', free: 60, est: [50, 30] },
+      { name: '國五 南港系統→石碇', km: 4.0, src: 'nfb', id: '0365', free: 80, est: [80, 45] },
+      { name: '石碇下匝道→服務區', km: 0.65, src: 'est', free: 30, est: [30, 20] },
+    ],
+    cams: ['n3s_148', 'n3s_151', 'nn_00', 'nn_08'],
+    camNote: '聯絡道只有北向鏡頭；國五的鏡頭只開放在 1968 官網觀看。',
+    camLink: { label: '到 1968 看國五監視器', url: 'https://1968.freeway.gov.tw/roadcctv' },
+    zones: [{ road: '國道五號', dir: '南向', from: 0, to: 4.5 }, { road: '國道三號', dir: '南向', from: 14.5, to: 16.5 }, { road: '南港聯絡道' }],
+  },
+  {
+    id: 2,
+    name: '木柵下國三',
+    via: '堤頂 → 環東 → 國三 → 木柵下 → 深坑 → 文山路',
+    waypoints: ['25.0513,121.6205', '25.0107,121.5967'],
+    segments: [
+      ...HOME_HEAD, RING_OUT, ...TO_N3_SOUTH,
+      { name: '國三 南港系統→南深路', km: 0.2, src: 'nfb', id: '0191', free: 85, est: [85, 50] },
+      { name: '國三 南深路→木柵', km: 4.3, src: 'nfb', id: '0193', free: 85, est: [85, 50] },
+      { name: '木柵下匝道→北深路→文山路', km: 6.0, src: 'est', free: 40, est: [40, 28], delay: 60 },
+    ],
+    cams: ['n3s_148', 'n3s_151', 'n3s_165', 'n3s_174', 'n3s_185', 'n3s_198', 'nn_00', 'nn_08'],
+    camNote: '聯絡道只有北向鏡頭。',
+    zones: [{ road: '國道三號', dir: '南向', from: 14.5, to: 21 }, { road: '南港聯絡道' }],
+  },
+  {
+    id: 3,
+    name: '南深路',
+    via: '堤頂 → 環東 → 南港軟體園區 → 南深路 → 深坑 → 文山路',
+    waypoints: ['25.0469,121.6154', '25.0268,121.6237'],
+    segments: [
+      ...HOME_HEAD, RING_OUT,
+      { name: '環東下園區匝道', km: 0.3, src: 'tpe', id: 'Z6171C0', free: 50, est: [40, 25] },
+      { name: '軟體園區→研究院路', km: 2.2, src: 'est', free: 35, est: [35, 22], delay: 60 },
+      { name: '研究院路一段', km: 0.9, src: 'est', free: 40, est: [35, 22], delay: 45 },
+      { name: '研究院路二段→舊莊街', km: 1.3, src: 'est', free: 40, est: [35, 22], delay: 45 },
+      { name: '南深路（山路）', km: 3.6, src: 'est', free: 30, est: [30, 22] },
+      { name: '深南路→北深路→文山路', km: 4.9, src: 'est', free: 40, est: [40, 30], delay: 30 },
+    ],
+    cams: ['nn_08'],
+    camNote: '南深路與環東沒有公開影像，這裡只有接環東附近的聯絡道鏡頭。',
+    zones: [],
+  },
+];
+
+const MODES = {
+  work: { label: '上班', from: '石碇服務區', to: '國票金控', mapsFrom: SERVICE_AREA, mapsTo: OFFICE_ADDRESS, routes: WORK_ROUTES },
+  home: { label: '下班', from: '國票金控', to: '石碇服務區', mapsFrom: OFFICE_ADDRESS, mapsTo: SERVICE_AREA, routes: HOME_ROUTES },
+};
+let MODE = 'work';
+let ROUTES = WORK_ROUTES;
+
+function setMode(mode) {
+  MODE = mode;
+  ROUTES = MODES[mode].routes;
+}
 
 // 平日上下班尖峰（用來選估算車速）
 function isPeak(date) {
@@ -221,16 +305,6 @@ function analyze(data, now, tracker = null) {
   return { peak, stale, routes: ranked, missed: routes.filter((r) => r.missed), winner: ranked[0] };
 }
 
-function apiQuery() {
-  const ids = { nfb: new Set(), vd: new Set(), tpe: new Set() };
-  ROUTES.forEach((r) => r.segments.forEach((s) => {
-    if (!ids[s.src]) return;
-    ids[s.src].add(s.id);
-    if (s.altId) ids[s.src].add(s.altId);
-  }));
-  return Object.keys(ids).map((k) => `${k}=${encodeURIComponent([...ids[k]].join(','))}`).join('&');
-}
-
 // 定位中不帶起點，讓 Google 地圖用手機目前位置，座標也不會出現在網址裡；已經過的中途點要拿掉
 function mapsUrl(route, tracker = null) {
   const tracking = tracker && tracker.everMatched;
@@ -239,9 +313,9 @@ function mapsUrl(route, tracker = null) {
     if (!tracking) return true;
     return locate(route.id, w.split(',').map(Number)).m > passedM;
   });
-  const q = new URLSearchParams({ api: '1', destination: DESTINATION, travelmode: 'driving' });
+  const q = new URLSearchParams({ api: '1', destination: MODES[MODE].mapsTo, travelmode: 'driving' });
   if (tracking) q.set('dir_action', 'navigate');
-  else q.set('origin', ORIGIN);
+  else q.set('origin', MODES[MODE].mapsFrom);
   if (waypoints.length) q.set('waypoints', waypoints.join('|'));
   return `https://www.google.com/maps/dir/?${q}`;
 }

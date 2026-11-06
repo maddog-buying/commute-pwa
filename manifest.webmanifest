@@ -1,7 +1,7 @@
 {
-  "name": "上班路線",
-  "short_name": "上班路線",
-  "description": "石碇服務區到國票金控的三條路線，依即時路況選最快",
+  "name": "上下班路線",
+  "short_name": "上下班路線",
+  "description": "石碇服務區與國票金控之間的三條路線，依即時路況選最快",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
