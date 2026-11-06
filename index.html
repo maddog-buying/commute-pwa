@@ -21,7 +21,12 @@
       <p>石碇服務區 → 國票金控</p>
     </header>
     <p id="demoBanner" class="demo" hidden>示範資料（虛構的國五塞車情境），不是真實路況</p>
-    <p id="intro" class="intro">按下分析，比較三條路線現在的預估時間。</p>
+    <p id="intro" class="intro">按下開始後會定位，並每分鐘更新一次路況，比較你還能走的路線。位置只留在手機上。</p>
+    <div id="liveBar" class="live-bar" role="status" hidden>
+      <p><i class="pulse"></i>即時分析中　<span id="liveState"></span></p>
+      <p id="liveWhere" class="live-where"></p>
+    </div>
+    <p id="stopNote" class="stop-note" hidden></p>
     <section id="verdict" class="verdict" aria-live="polite" hidden></section>
     <section id="routes" class="routes"></section>
     <div id="legend" class="legend" hidden>
@@ -31,11 +36,11 @@
       <span><i class="dot lv-est"></i>無即時資料，估算</span>
     </div>
     <section id="status" class="status" aria-live="polite"></section>
-    <footer class="credit">資料來源：交通部高速公路局、臺北市交通管制工程處。預估時間僅供參考。</footer>
+    <footer class="credit">資料來源：交通部 TDX、高速公路局、臺北市交通管制工程處。路徑 © OpenStreetMap contributors。預估時間僅供參考，開車時請勿操作手機。</footer>
   </main>
 
   <div class="action-bar">
-    <button id="analyze" type="button">分析</button>
+    <button id="analyze" type="button">開始分析</button>
   </div>
 
   <dialog id="camDialog" class="cam-dialog" aria-labelledby="camTitle">
@@ -55,7 +60,9 @@
   </dialog>
 
   <script src="config.js"></script>
+  <script src="routes-geometry.js"></script>
   <script src="routes.js"></script>
+  <script src="tracking.js"></script>
   <script src="demo.js"></script>
   <script>
     if (new URLSearchParams(location.search).has('dev')) document.write('<script src="tools/dev-backend.js"><\/script>');

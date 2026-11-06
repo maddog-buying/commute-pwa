@@ -21,7 +21,7 @@ const CAMS = {
 
 const TO_LINK_ROAD = [
   { name: '國三 南港系統→南港', km: 1.2, src: 'nfb', id: '0190', free: 85, est: [85, 50] },
-  { name: '南港聯絡道', km: 1.4, src: 'vd', id: 'VD-N3N-N-0.700-M-LOOP', free: 60, est: [55, 35] },
+  { name: '南港聯絡道', km: 2.2, src: 'vd', id: 'VD-N3N-N-0.700-M-LOOP', free: 60, est: [55, 35] },
 ];
 const RING_FRONT = { name: '環東 聯絡道→南港', group: '環東大道', km: 0.33, src: 'tpe', id: 'Z6310G0', free: 70, est: [70, 45] };
 // 臺北市資料有時只提供 Z6330G5（名稱寫出城，但座標是進城方向的同一段）
@@ -76,7 +76,7 @@ const ROUTES = [
       { name: '南深路（山路）', km: 3.6, src: 'est', free: 30, est: [30, 22] },
       { name: '舊莊街→研究院路二段', km: 1.3, src: 'tpe', id: 'ZHX4E40', free: 40, est: [35, 22], delay: 45 },
       { name: '研究院路一段', km: 0.9, src: 'tpe', id: 'ZKP4L00', free: 40, est: [35, 22], delay: 45 },
-      { name: '經貿二路→環東入口', km: 0.9, src: 'est', free: 30, est: [30, 18], delay: 60 },
+      { name: '研究院路→環東入口匝道', km: 2.5, src: 'est', free: 35, est: [35, 22], delay: 60 },
       RING_MAIN, ...TAIL,
     ],
     cams: ['nn_08'],
@@ -183,11 +183,21 @@ function eventsFor(route, events) {
   }));
 }
 
-function analyze(data, now) {
+// 只留還沒走完的路段，目前路段依走過的比例扣掉
+function remainingSegments(segs, position) {
+  if (!position) return segs;
+  return segs.slice(position.seg).map((s, i) => {
+    const left = i === 0 ? 1 - position.frac : 1;
+    return { ...s, km: s.km * left, seconds: s.seconds * left };
+  }).filter((s) => s.km > 0.01);
+}
+
+function analyze(data, now, tracker = null) {
   const peak = isPeak(now);
   const stale = staleFeeds(data, now);
   const routes = ROUTES.map((route) => {
-    const segs = route.segments.map((s) => evaluateSegment(s, data, peak, stale));
+    const position = tracker ? tracker.progress[route.id] : null;
+    const segs = remainingSegments(route.segments.map((s) => evaluateSegment(s, data, peak, stale)), position);
     const seconds = segs.reduce((a, s) => a + s.seconds, 0);
     const liveSeconds = segs.filter((s) => s.live).reduce((a, s) => a + s.seconds, 0);
     const worst = segs.filter((s) => s.level === 'jam' || s.level === 'slow')
@@ -203,19 +213,12 @@ function analyze(data, now) {
       worst,
       events: eventsFor(route, data.events),
       arrive: new Date(now.getTime() + seconds * 1000),
+      missed: !!tracker && tracker.eliminated.has(route.id),
     };
   });
-  const ranked = [...routes].sort((a, b) => a.seconds - b.seconds);
-  const winner = ranked[0];
-  const baseline = routes.find((r) => r.id === 1);
-  return {
-    peak,
-    stale,
-    routes: ranked,
-    winner,
-    saved: Math.round((baseline.seconds - winner.seconds) / 60),
-    margin: ranked[1].seconds - winner.seconds,
-  };
+  // 已錯過的路線不參與比較
+  const ranked = routes.filter((r) => !r.missed).sort((a, b) => a.seconds - b.seconds);
+  return { peak, stale, routes: ranked, missed: routes.filter((r) => r.missed), winner: ranked[0] };
 }
 
 function apiQuery() {
@@ -228,13 +231,17 @@ function apiQuery() {
   return Object.keys(ids).map((k) => `${k}=${encodeURIComponent([...ids[k]].join(','))}`).join('&');
 }
 
-function mapsUrl(route) {
-  const q = new URLSearchParams({
-    api: '1',
-    origin: ORIGIN,
-    destination: DESTINATION,
-    waypoints: route.waypoints.join('|'),
-    travelmode: 'driving',
+// 定位中不帶起點，讓 Google 地圖用手機目前位置，座標也不會出現在網址裡；已經過的中途點要拿掉
+function mapsUrl(route, tracker = null) {
+  const tracking = tracker && tracker.everMatched;
+  const passedM = tracking ? tracker.progress[route.id].m + 100 : 0;
+  const waypoints = route.waypoints.filter((w) => {
+    if (!tracking) return true;
+    return locate(route.id, w.split(',').map(Number)).m > passedM;
   });
+  const q = new URLSearchParams({ api: '1', destination: DESTINATION, travelmode: 'driving' });
+  if (tracking) q.set('dir_action', 'navigate');
+  else q.set('origin', ORIGIN);
+  if (waypoints.length) q.set('waypoints', waypoints.join('|'));
   return `https://www.google.com/maps/dir/?${q}`;
 }
